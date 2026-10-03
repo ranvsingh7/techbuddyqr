@@ -1,11 +1,23 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import sharp, { type Sharp } from "sharp";
+import type sharp from "sharp";
+import type { Sharp } from "sharp";
 import { env } from "@/lib/env";
 import { ApiError } from "@/lib/api-error";
 import { MAX_IMAGE_SIDE, MAX_UPLOAD_BYTES } from "@/lib/limits";
 
+/**
+ * Sharp is loaded on first use rather than at import time. Loading libvips costs
+ * real time on a cold function, and this module is reachable from plain listing
+ * pages (`/admin/templates`, `/admin/qr/[id]`) that never touch a pixel.
+ */
+async function loadSharp(): Promise<typeof sharp> {
+  // sharp is CommonJS, so the constructor arrives on `.default` under ESM
+  // interop and directly otherwise.
+  const mod = (await import("sharp")) as { default?: typeof sharp };
+  return mod.default ?? (mod as unknown as typeof sharp);
+}
 
 const TEMPLATES_DIR = "templates";
 const ALLOWED_FORMATS = new Set(["png", "jpeg", "webp"]);
@@ -53,6 +65,7 @@ export const storage = {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+    const sharp = await loadSharp();
     const image = sharp(buffer, { limitInputPixels: MAX_IMAGE_SIDE * MAX_IMAGE_SIDE });
     const metadata = await image.metadata().catch(() => null);
 

@@ -8,23 +8,23 @@ import { qrRedirectUrl } from "@/lib/env";
 const numberFormat = new Intl.NumberFormat("en-IN");
 
 async function loadStats() {
-  const [totalQr, activeQr, unassignedQr, totalMerchants, totalScans] = await Promise.all([
+  // Independent of each other, so they share one round trip instead of three:
+  // on a remote database each extra hop costs a full network round trip.
+  const [totalQr, activeQr, unassignedQr, totalMerchants, totalScans, topScanned, daily] = await Promise.all([
     QR.countDocuments({}),
     QR.countDocuments({ status: "ACTIVE" }),
     QR.countDocuments({ merchantId: null }),
     Merchant.countDocuments({}),
     ScanEvent.countDocuments({}),
-  ]);
-
-  const topScanned = await ScanEvent.aggregate<{ _id: string; count: number }>([
-    { $group: { _id: "$qrId", count: { $sum: 1 } } },
-    { $sort: { count: -1 } },
-    { $limit: 5 },
-  ]);
-
-  const daily = await ScanEvent.aggregate<{ _id: string; count: number }>([
-    { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } }, count: { $sum: 1 } } },
-    { $sort: { _id: 1 } },
+    ScanEvent.aggregate<{ _id: string; count: number }>([
+      { $group: { _id: "$qrId", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 5 },
+    ]),
+    ScanEvent.aggregate<{ _id: string; count: number }>([
+      { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } }, count: { $sum: 1 } } },
+      { $sort: { _id: 1 } },
+    ]),
   ]);
 
   return { totalQr, activeQr, unassignedQr, totalMerchants, totalScans, topScanned, daily };

@@ -42,13 +42,17 @@ export async function listQrCodes(filters: QrListFilters): Promise<{ items: QrLi
     query.$or = [{ qrId: pattern }, { destinationUrl: pattern }, { merchantId: { $in: merchants.map((m) => m._id) } }];
   }
 
-  const total = await QR.countDocuments(query);
-  const docs = await QR.find(query)
-    .sort({ createdAt: -1 })
-    .skip((filters.page - 1) * filters.limit)
-    .limit(filters.limit)
-    .populate("merchantId", MERCHANT_FIELDS)
-    .lean();
+  // The total and the page of rows do not depend on each other, so they are one
+  // round trip rather than two. `populate` adds its own merchant lookup.
+  const [total, docs] = await Promise.all([
+    QR.countDocuments(query),
+    QR.find(query)
+      .sort({ createdAt: -1 })
+      .skip((filters.page - 1) * filters.limit)
+      .limit(filters.limit)
+      .populate("merchantId", MERCHANT_FIELDS)
+      .lean(),
+  ]);
 
   return {
     items: docs.map((doc) => ({
