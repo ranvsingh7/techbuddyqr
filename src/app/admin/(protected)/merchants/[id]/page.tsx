@@ -5,6 +5,7 @@ import { findMerchantById } from "@/services/merchant";
 import { listQrCodes } from "@/services/qr-query";
 import { DESTINATION_CONFIG } from "@/types";
 import { Card, CardHeader, EmptyState, MonoId, StatusBadge, buttonClass } from "@/components/ui";
+import { dbConnect } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,7 @@ export default async function AdminMerchantPage({ params }: PageProps<"/admin/me
   const { id } = await params;
   if (!Types.ObjectId.isValid(id)) notFound();
 
+  await dbConnect();
   const merchant = await findMerchantById(id);
   if (!merchant) notFound();
 

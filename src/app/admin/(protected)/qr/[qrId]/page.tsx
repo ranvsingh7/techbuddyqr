@@ -7,6 +7,7 @@ import { ScanEvent } from "@/models/ScanEvent";
 import { destinationLabel } from "@/types";
 import { Card, CardHeader, StatusBadge, buttonClass } from "@/components/ui";
 import { QrActions, type QrActionTarget } from "@/components/qr-actions";
+import { dbConnect } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ function Detail({ label, value }: { label: string; value: React.ReactNode }) {
 export default async function AdminQrDetailPage({ params }: PageProps<"/admin/qr/[qrId]">) {
   const { qrId } = await params;
 
+  await dbConnect();
   let qr;
   try {
     qr = await findQrById(qrId);

@@ -3,6 +3,7 @@ import { DESTINATION_TYPES, QR_STATUSES, type DestinationType, type QrStatus } f
 import { countScansByQrId, listQrCodes } from "@/services/qr-query";
 import { Card, EmptyState, buttonClass, inputClass } from "@/components/ui";
 import { QrList, type QrListRow } from "@/components/qr-list";
+import { dbConnect } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,7 @@ export default async function AdminQrPage({ searchParams }: PageProps<"/admin/qr
     limit: 25,
   };
 
+  await dbConnect();
   const { items, total, page, pages } = await listQrCodes(filters);
 
   const scanCountById = await countScansByQrId(items.map((item) => item.qrId));

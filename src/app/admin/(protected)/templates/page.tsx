@@ -2,6 +2,7 @@ import Link from "next/link";
 import { listTemplates } from "@/services/template";
 import { destinationLabel } from "@/types";
 import { Card, EmptyState, buttonClass } from "@/components/ui";
+import { dbConnect } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,7 @@ export const metadata = { title: "Design templates" };
 const dateFormat = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 
 export default async function AdminTemplatesPage() {
+  await dbConnect();
   const templates = await listTemplates();
 
   return (

@@ -4,6 +4,7 @@ import { ScanEvent } from "@/models/ScanEvent";
 import Link from "next/link";
 import { Card, CardHeader, buttonClass } from "@/components/ui";
 import { qrRedirectUrl } from "@/lib/env";
+import { dbConnect } from "@/lib/db";
 
 const numberFormat = new Intl.NumberFormat("en-IN");
 
@@ -41,6 +42,7 @@ function StatCard({ label, value, hint }: { label: string; value: number; hint?:
 }
 
 export default async function AdminDashboardPage() {
+  await dbConnect();
   const { totalQr, activeQr, unassignedQr, totalMerchants, totalScans, topScanned, daily } = await loadStats();
   const peak = Math.max(1, ...daily.map((day) => day.count));
 

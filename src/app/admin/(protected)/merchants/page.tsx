@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listMerchants } from "@/services/merchant-query";
 import { Card, EmptyState, buttonClass, inputClass } from "@/components/ui";
+import { dbConnect } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export default async function AdminMerchantsPage({ searchParams }: PageProps<"/a
   const q = typeof params.q === "string" ? params.q : undefined;
   const page = Number(params.page) > 0 ? Number(params.page) : 1;
 
+  await dbConnect();
   const { items, total, pages } = await listMerchants({ q, page, limit: 25 });
   const pageLink = (target: number) => `/admin/merchants?${new URLSearchParams({ ...(q ? { q } : {}), page: String(target) })}`;
 

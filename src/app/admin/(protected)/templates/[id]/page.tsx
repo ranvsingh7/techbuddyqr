@@ -5,6 +5,7 @@ import { listQrCodes } from "@/services/qr-query";
 import { Card, CardHeader, buttonClass } from "@/components/ui";
 import { TemplateEditForm } from "@/components/template-edit-form";
 import { DesignBatch, type DesignBatchQr } from "@/components/design-batch";
+import { dbConnect } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export const metadata = { title: "Template" };
 const BATCH_POOL_SIZE = 200;
 
 export default async function AdminTemplatePage({ params }: PageProps<"/admin/templates/[id]">) {
+  await dbConnect();
   const template = await getTemplate((await params).id);
   if (!template) notFound();
 
