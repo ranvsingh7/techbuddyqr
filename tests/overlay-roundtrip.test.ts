@@ -3,7 +3,7 @@ import sharp from "sharp";
 import JSZip from "jszip";
 import { SignJWT } from "jose";
 import { connectTestDatabase, disconnectTestDatabase, resetTestDatabase } from "./helpers/database";
-import { storage } from "@/lib/storage";
+import { templateImageBucket } from "@/lib/gridfs";
 import { requestWithIp } from "./helpers/request-scope";
 import { decodeQrText } from "./helpers/decode-qr";
 import { env } from "@/lib/env";
@@ -238,8 +238,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  const templates = await Template.find({}, { imageKey: 1 }).lean();
-  await Promise.all(templates.map((template) => storage.removeTemplateImage(template.imageKey)));
+  await (await templateImageBucket()).drop();
 });
 
 afterAll(async () => {

@@ -1,15 +1,29 @@
 import JSZip from "jszip";
-import { storage } from "@/lib/storage";
 import { renderDesign } from "@/image/compose";
-import { getTemplate } from "@/services/template";
+import { getTemplateWithImage } from "@/services/template";
+import { readTemplateArtwork } from "@/lib/template-image";
 import { findExistingQrIds } from "@/services/qr";
+import { QR } from "@/models/QR";
 import { ApiError } from "@/lib/api-error";
 
-/** Loads a template and its base artwork, ready for composition. */
+/**
+ * Loads a template and its single base artwork, ready for composition.
+ *
+ * Called once per request: a batch of a hundred codes reads the one stored image
+ * and reuses the same buffer, rather than downloading it per code.
+ */
 async function loadTemplate(templateId: string) {
-  const template = await getTemplate(templateId);
-  if (!template) throw new ApiError("TEMPLATE_NOT_FOUND", 404);
-  return { template, baseImage: await storage.readTemplateImage(template.imageKey) };
+  const template = await getTemplateWithImage(templateId);
+  return { template, baseImage: await readTemplateArtwork(template) };
+}
+
+/**
+ * Remembers which template a QR was printed from, so a template in use cannot be
+ * deleted out from under its designs. This stores a reference only; the artwork
+ * stays on the template document.
+ */
+async function recordTemplate(templateObjectId: unknown, qrIds: string[]): Promise<void> {
+  await QR.updateMany({ qrId: { $in: qrIds } }, { $set: { templateId: templateObjectId } }, { timestamps: false });
 }
 
 /** Refuses IDs that were never generated, so a card can never be printed for nothing. */
@@ -29,12 +43,15 @@ export async function renderQrDesign(templateId: string, qrId: string): Promise<
   const [known] = await requireKnownQrIds([qrId]);
   const { template, baseImage } = await loadTemplate(templateId);
 
-  return renderDesign({
+  const design = await renderDesign({
     baseImage,
     overlay: template.overlay,
     qrId: known!,
     lightPlate: template.lightPlate,
   });
+
+  await recordTemplate(template._id, [known!]);
+  return design;
 }
 
 /**
@@ -47,6 +64,7 @@ export async function renderDesignZip(templateId: string, qrIds: string[]): Prom
   const { template, baseImage } = await loadTemplate(templateId);
   const zip = new JSZip();
 
+  // One stored image, one buffer, reused for every code in the batch.
   for (const qrId of unique) {
     const design = await renderDesign({
       baseImage,
@@ -56,6 +74,8 @@ export async function renderDesignZip(templateId: string, qrIds: string[]): Prom
     });
     zip.file(`${qrId}.png`, design);
   }
+
+  await recordTemplate(template._id, unique);
 
   return zip.generateAsync({ type: "nodebuffer", compression: "STORE" });
 }

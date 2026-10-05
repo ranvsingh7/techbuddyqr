@@ -2,10 +2,14 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import sharp from "sharp";
 import JSZip from "jszip";
 import { SignJWT } from "jose";
-import { connectTestDatabase, disconnectTestDatabase, resetTestDatabase } from "./helpers/database";
-import { storage } from "@/lib/storage";
-import { readdir } from "node:fs/promises";
-import path from "node:path";
+import {
+  connectTestDatabase,
+  disconnectTestDatabase,
+  gridfsChunkCount,
+  gridfsFiles,
+  resetTestDatabase,
+} from "./helpers/database";
+import { templateImageBucket } from "@/lib/gridfs";
 import { requestWithIp } from "./helpers/request-scope";
 import { decodeQrText } from "./helpers/decode-qr";
 import { env } from "@/lib/env";
@@ -89,13 +93,14 @@ beforeEach(async () => {
   await signIn();
 });
 
-/** File names currently in the artwork directory. */
-const storedArtwork = () => readdir(path.resolve(process.env.STORAGE_DIR ?? "./storage", "templates")).catch(() => [] as string[]);
+/** Files currently in the GridFS artwork bucket. */
+const storedArtwork = async () => (await gridfsFiles()).map((file) => String(file._id));
 
 /** Wipes the database between tests; the artwork files go with it. */
 afterEach(async () => {
-  const templates = await Template.find({}, { imageKey: 1 }).lean();
-  await Promise.all(templates.map((template) => storage.removeTemplateImage(template.imageKey)));
+  await resetTestDatabase();
+  const bucket = await templateImageBucket();
+  await bucket.drop();
 });
 
 afterAll(async () => {
@@ -353,7 +358,8 @@ describe("templates and designs", () => {
     expect(template?.name).toBe("Table card");
     expect(template?.imageWidth).toBe(400);
     expect(template?.imageHeight).toBe(600);
-    expect(template?.imageKey).toBeTruthy();
+    expect(template?.imageFileId).toBeTruthy();
+    expect(template?.imageKey).toBeNull();
     expect(Object.keys(template ?? {}).some((key) => key.includes("binary"))).toBe(false);
   });
 
@@ -373,7 +379,7 @@ describe("templates and designs", () => {
     expect(response.status).toBe(201);
     expect(template?.overlay?.qr).toEqual({ x: 200, y: 400, size: 200 });
     expect(template?.overlay?.text?.y).toBeGreaterThanOrEqual(0);
-    // One artwork on disk for this template, and both layers inside it.
+    // One artwork in the bucket for this template, and both layers inside it.
     expect((await storedArtwork()).length).toBe(before.length + 1);
     expect((template?.overlay?.qr?.x ?? 0) + (template?.overlay?.qr?.size ?? 0)).toBeLessThanOrEqual(template?.imageWidth ?? 0);
   });
@@ -391,7 +397,7 @@ describe("templates and designs", () => {
 
     expect(response.status).toBe(400);
     expect(await Template.countDocuments()).toBe(0);
-    // The rejected upload must not be left sitting on the disk.
+    // The rejected upload must not be left behind in the bucket.
     expect(await storedArtwork()).toEqual(before);
   });
 
@@ -432,14 +438,16 @@ describe("templates and designs", () => {
   it("deletes a template together with its artwork file", async () => {
     const templateId = await uploadTemplate();
     const template = await Template.findById(templateId).lean();
-    expect(await storedArtwork()).toContain(template?.imageKey);
+    expect(await storedArtwork()).toContain(String(template?.imageFileId));
 
     const ctx = { params: Promise.resolve({ id: templateId }) } as RouteContext<"/api/admin/templates/[id]">;
     const response = await deleteTemplateRoute(authedRequest(`/api/admin/templates/${templateId}`), ctx);
 
     expect(response.status).toBe(200);
     expect(await Template.countDocuments()).toBe(0);
-    expect(await storedArtwork()).not.toContain(template?.imageKey);
+    expect(await storedArtwork()).not.toContain(String(template?.imageFileId));
+    // The chunks go with the file, so nothing is left occupying space.
+    expect(await gridfsChunkCount()).toBe(0);
   });
 
   it("refuses to print a design for a QR code that was never generated", async () => {

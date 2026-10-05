@@ -1,6 +1,13 @@
 import { Types } from "mongoose";
 import { ApiError } from "@/lib/api-error";
 import { storage } from "@/lib/storage";
+import { deleteTemplateImage } from "@/lib/gridfs";
+import {
+  deleteTemplateArtwork,
+  prepareTemplateImage,
+  readTemplateArtwork,
+  storePreparedImage,
+} from "@/lib/template-image";
 import {
   REFERENCE_ID,
   clampQr,
@@ -12,6 +19,7 @@ import {
   type TemplateOverlay,
   type TextLayer,
 } from "@/qr/overlay";
+import { QR } from "@/models/QR";
 import { Template } from "@/models/Template";
 import type { DestinationType } from "@/types";
 
@@ -62,35 +70,53 @@ function overlayFromLegacy(qrPosition: LegacyPlacement, image: { width: number; 
   return normalizeOverlay({ qr, text: defaultTextFor(qr, image, REFERENCE_ID) }, image, REFERENCE_ID);
 }
 
+/**
+ * Creates a template and stores its artwork exactly once, in GridFS.
+ *
+ * The QR documents that later point at this template reference the same file;
+ * no image is ever copied into them. If the document insert fails the uploaded
+ * file is removed again, so a rejected request leaves nothing behind.
+ */
 export async function createTemplate(input: TemplateInput, file: File) {
-  const image = await storage.saveTemplateImage(file);
+  const image = await prepareTemplateImage(file);
+  const imageFileId = await storePreparedImage(image);
 
   try {
-    // Inside the try: a rejected request must not leave the upload on disk.
+    // Inside the try: a rejected request must not leave the upload behind.
     const overlay = input.overlay
       ? normalizeOverlay(input.overlay, image, REFERENCE_ID)
       : overlayFromLegacy(input.qrPosition!, image);
 
-    return await Template.create({
+    // `.toObject()` first: `_id` and the timestamps are prototype getters on a
+    // hydrated document and would be lost by destructuring it directly.
+    const { imageFileId: _fileId, imageKey: _key, ...created } = (await Template.create({
       name: input.name,
       type: input.type,
-      imageKey: image.key,
+      imageFileId,
+      imageKey: null,
       imageWidth: image.width,
       imageHeight: image.height,
       overlay,
       // Legacy mirror, so anything still reading the old field keeps working.
       qrPosition: placementFromQr(overlay.qr),
       lightPlate: input.lightPlate,
-    });
+    })).toObject();
+
+    return created;
   } catch (error) {
-    await storage.removeTemplateImage(image.key);
+    await deleteTemplateImage(imageFileId);
     throw error;
   }
 }
 
 export async function listTemplates() {
   const templates = await Template.find().sort({ createdAt: -1 }).lean();
-  return templates.map((template) => ({ ...template, overlay: resolveOverlay(template) }));
+
+  // Storage locations are internal, so they never leave the service.
+  return templates.map(({ imageFileId: _fileId, imageKey: _key, ...template }) => ({
+    ...template,
+    overlay: resolveOverlay(template),
+  }));
 }
 
 export async function getTemplate(id: string) {
@@ -99,12 +125,31 @@ export async function getTemplate(id: string) {
   const template = await Template.findById(id).lean();
   if (!template) return null;
 
+  const { imageFileId: _fileId, imageKey: _key, ...rest } = template;
+  return { ...rest, overlay: resolveOverlay(template) };
+}
+
+/** Internal read that keeps the storage locations, for image and design work. */
+export async function getTemplateWithImage(id: string) {
+  if (!Types.ObjectId.isValid(id)) throw new ApiError("TEMPLATE_NOT_FOUND", 404);
+
+  const template = await Template.findById(id).lean();
+  if (!template) throw new ApiError("TEMPLATE_NOT_FOUND", 404);
+
   return { ...template, overlay: resolveOverlay(template) };
 }
 
+/** The base artwork for this template, loaded from GridFS (or its legacy file). */
+export async function getTemplateArtwork(id: string) {
+  return readTemplateArtwork(await getTemplateWithImage(id));
+}
+
+/**
+ * Moves the overlay and the name. Nothing here touches the artwork, so editing
+ * a placement never re-uploads the image.
+ */
 export async function updateTemplate(id: string, patch: TemplatePatch) {
-  const template = await getTemplate(id);
-  if (!template) throw new ApiError("TEMPLATE_NOT_FOUND", 404);
+  const template = await getTemplateWithImage(id);
 
   const image = imageBox(template);
   const current = resolveOverlay(template);
@@ -130,13 +175,92 @@ export async function updateTemplate(id: string, patch: TemplatePatch) {
   if (patch.lightPlate !== undefined) changes.lightPlate = patch.lightPlate;
 
   const saved = await Template.findByIdAndUpdate(template._id, { $set: changes }, { returnDocument: "after" }).lean();
-  return saved ? { ...saved, overlay: resolveOverlay(saved) } : null;
+  if (!saved) return null;
+
+  const { imageFileId: _fileId, imageKey: _key, ...rest } = saved;
+  return { ...rest, overlay: resolveOverlay(saved) };
 }
 
-export async function deleteTemplate(id: string) {
-  const template = await getTemplate(id);
-  if (!template) throw new ApiError("TEMPLATE_NOT_FOUND", 404);
+/**
+ * Swaps the base image for a new one.
+ *
+ * The new file is uploaded first and only becomes the template's image once the
+ * update succeeds; the previous file is deleted afterwards, so a failure at any
+ * point leaves the template with the image it already had and never orphans a
+ * file. The overlay is re-clamped because the artwork may be a different size.
+ */
+export async function replaceTemplateImage(id: string, file: File) {
+  const template = await getTemplateWithImage(id);
+  const image = await prepareTemplateImage(file);
+  const imageFileId = await storePreparedImage(image);
+  const previous = { imageFileId: template.imageFileId, imageKey: template.imageKey };
+  const overlay = normalizeOverlay(resolveOverlay(template), image, REFERENCE_ID);
 
-  await Template.findByIdAndDelete(template._id).lean();
-  await storage.removeTemplateImage(template.imageKey);
+  // If the update throws the template still points at its old file, so the new
+  // upload is an orphan and has to go. This runs before any success handling so
+  // a failure here can never touch the file the template now uses.
+  const updated = await updateImageFile(template._id, imageFileId, image, overlay);
+  if (!updated) {
+    await deleteTemplateImage(imageFileId);
+    throw new ApiError("TEMPLATE_NOT_FOUND", 404);
+  }
+
+  // The template now points at the new file, so the old one is safe to remove.
+  if (previous.imageFileId) await deleteTemplateImage(previous.imageFileId);
+  else if (previous.imageKey) await storage.removeTemplateImage(previous.imageKey);
+
+  const { imageFileId: _fileId, imageKey: _key, ...rest } = updated;
+  return { ...rest, overlay: resolveOverlay(updated) };
+}
+
+async function updateImageFile(
+  id: Types.ObjectId,
+  imageFileId: Types.ObjectId,
+  image: { width: number; height: number },
+  overlay: TemplateOverlay,
+) {
+  try {
+    return await Template.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          imageFileId,
+          imageKey: null,
+          imageWidth: image.width,
+          imageHeight: image.height,
+          overlay,
+          qrPosition: placementFromQr(overlay.qr),
+        },
+      },
+      { returnDocument: "after" },
+    ).lean();
+  } catch (error) {
+    await deleteTemplateImage(imageFileId);
+    throw error;
+  }
+}
+
+/**
+ * Deletes a template only when nothing references it. QRs store a templateId,
+ * not a copy of the artwork, so a template in use is blocked rather than
+ * quietly orphaning every design printed from it.
+ */
+export async function deleteTemplate(id: string) {
+  const template = await getTemplateWithImage(id);
+
+  const qrCount = await QR.countDocuments({ templateId: template._id });
+  if (qrCount > 0) {
+    throw new ApiError(
+      "TEMPLATE_IN_USE",
+      409,
+      { qrCount },
+      `Template is currently used by ${qrCount} QR code${qrCount === 1 ? "" : "s"} and cannot be deleted.`,
+    );
+  }
+
+  // The document goes first: an image left behind costs space, whereas a
+  // template still pointing at a deleted image would break every design
+  // printed from it.
+  await Template.findByIdAndDelete(template._id);
+  await deleteTemplateArtwork(template);
 }

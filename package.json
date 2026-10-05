@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "hash-password": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/scripts/hash-password.ts"
+    "hash-password": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/scripts/hash-password.ts",
+    "migrate:gridfs": "tsx --env-file-if-exists=.env.local src/scripts/migrate-storage-to-gridfs.mts"
   },
   "dependencies": {
     "jose": "^6.2.12",
@@ -33,6 +34,7 @@
     "@zxing/library": "^0.21.3",
     "happy-dom": "^20.14.5",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vite": "^8.3.2",
     "vitest": "^5.0.3"

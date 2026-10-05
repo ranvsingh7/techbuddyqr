@@ -6,6 +6,8 @@ export const API_ERRORS = {
   INVALID_DESTINATION: "The destination you entered is not valid.",
   MERCHANT_NOT_FOUND: "Merchant not found.",
   TEMPLATE_NOT_FOUND: "Template not found.",
+  TEMPLATE_IMAGE_NOT_FOUND: "Template image not found.",
+  TEMPLATE_IN_USE: "This template is used by QR codes and cannot be deleted.",
   UNAUTHORIZED: "You are not signed in.",
   FORBIDDEN: "You are not allowed to do that.",
   VALIDATION_ERROR: "Please check the details you entered.",
