@@ -24,6 +24,7 @@ export default async function AdminTemplatePage({ params }: PageProps<"/admin/te
   const candidates: DesignBatchQr[] = items.map((item) => ({
     qrId: item.qrId,
     status: item.status,
+    printStatus: item.printStatus,
     type: item.type,
     businessName: item.merchant?.businessName ?? null,
   }));

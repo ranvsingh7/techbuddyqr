@@ -2,7 +2,7 @@ import { Types } from "mongoose";
 import { Merchant } from "@/models/Merchant";
 import { QR } from "@/models/QR";
 import { ScanEvent } from "@/models/ScanEvent";
-import type { DestinationType, QrStatus } from "@/types";
+import type { DestinationType, QrPrintStatus, QrStatus } from "@/types";
 import type { z } from "zod";
 import type { qrListQuerySchema } from "@/validation/schemas";
 
@@ -13,6 +13,7 @@ export type PopulatedMerchant = { _id: Types.ObjectId; name: string; businessNam
 export type QrListItem = {
   qrId: string;
   status: QrStatus;
+  printStatus: QrPrintStatus;
   type: DestinationType | null;
   destinationUrl: string | null;
   merchant: PopulatedMerchant | null;
@@ -58,6 +59,7 @@ export async function listQrCodes(filters: QrListFilters): Promise<{ items: QrLi
     items: docs.map((doc) => ({
       qrId: doc.qrId,
       status: doc.status,
+      printStatus: doc.printStatus ?? "UNPRINTED",
       type: doc.type,
       destinationUrl: doc.destinationUrl,
       merchant: (doc.merchantId as unknown as PopulatedMerchant | null) ?? null,

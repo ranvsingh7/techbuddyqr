@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import type { DestinationType, QrStatus } from "@/types";
+import type { DestinationType, QrPrintStatus, QrStatus } from "@/types";
 import { Card, MonoId, StatusBadge, buttonClass, inputClass, labelClass } from "@/components/ui";
 import { MAX_ZIP_COUNT } from "@/validation/schemas";
 
 export type DesignBatchQr = {
   qrId: string;
   status: QrStatus;
+  printStatus: QrPrintStatus;
   type: DestinationType | null;
   businessName: string | null;
 };
@@ -20,13 +21,14 @@ const label = (value: string) => value.charAt(0) + value.slice(1).toLowerCase();
  */
 export function DesignBatch({ templateId, candidates }: { templateId: string; candidates: DesignBatchQr[] }) {
   const [count, setCount] = useState(Math.min(20, candidates.length));
-  const [status, setStatus] = useState<QrStatus | "">("GENERATED");
+  const [status, setStatus] = useState<QrStatus | "">("");
+  const [printStatus, setPrintStatus] = useState<QrPrintStatus>("UNPRINTED");
   const [selected, setSelected] = useState<string[]>([]);
   const [previewVersion, setPreviewVersion] = useState(0);
   const [error, setError] = useState("");
   const [zipPending, setZipPending] = useState(false);
 
-  const pool = status ? candidates.filter((candidate) => candidate.status === status) : candidates;
+  const pool = candidates.filter((candidate) => (!status || candidate.status === status) && candidate.printStatus === printStatus);
 
   function generatePreview() {
     setError("");
@@ -67,6 +69,20 @@ export function DesignBatch({ templateId, candidates }: { templateId: string; ca
     }
   }
 
+  async function updatePrintStatus(nextStatus: QrPrintStatus) {
+    setError("");
+    const response = await fetch("/api/admin/qr/print-status", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ qrIds: selected, printStatus: nextStatus }),
+    });
+    if (!response.ok) {
+      setError("Print status could not be updated.");
+      return;
+    }
+    window.location.reload();
+  }
+
   return (
     <div className="space-y-5">
       <Card className="p-5">
@@ -80,6 +96,15 @@ export function DesignBatch({ templateId, candidates }: { templateId: string; ca
                   {label(option)}
                 </option>
               ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="batch-print-status" className={labelClass}>Print stage</label>
+            <select id="batch-print-status" value={printStatus} onChange={(event) => setPrintStatus(event.target.value as QrPrintStatus)} className={inputClass}>
+              <option value="UNPRINTED">Unprinted</option>
+              <option value="GO_FOR_PRINT">Go for print</option>
+              <option value="PRINTED">Printed</option>
             </select>
           </div>
 
@@ -123,6 +148,10 @@ export function DesignBatch({ templateId, candidates }: { templateId: string; ca
             <button type="button" onClick={downloadZip} disabled={zipPending} className={buttonClass.primary}>
               {zipPending ? "Building ZIP…" : "Download All"}
             </button>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => void updatePrintStatus("GO_FOR_PRINT")} className={buttonClass.secondary}>Go for print</button>
+              <button type="button" onClick={() => void updatePrintStatus("PRINTED")} className={buttonClass.secondary}>Mark printed</button>
+            </div>
           </header>
 
           <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">

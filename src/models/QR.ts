@@ -1,5 +1,5 @@
 import { Schema, model, models, type InferSchemaType } from "mongoose";
-import { DESTINATION_TYPES, QR_STATUSES } from "@/types";
+import { DESTINATION_TYPES, QR_PRINT_STATUSES, QR_STATUSES } from "@/types";
 
 const qrSchema = new Schema(
   {
@@ -15,6 +15,7 @@ const qrSchema = new Schema(
     type: { type: String, enum: [...DESTINATION_TYPES, null], default: null },
     destinationUrl: { type: String, default: null },
     status: { type: String, enum: QR_STATUSES, required: true, default: "GENERATED" },
+    printStatus: { type: String, enum: QR_PRINT_STATUSES, required: true, default: "UNPRINTED" },
     activatedAt: { type: Date, default: null },
     lastScannedAt: { type: Date, default: null },
   },
@@ -25,6 +26,7 @@ qrSchema.index({ qrId: 1 }, { unique: true });
 qrSchema.index({ merchantId: 1 });
 qrSchema.index({ templateId: 1 });
 qrSchema.index({ status: 1 });
+qrSchema.index({ printStatus: 1 });
 qrSchema.index({ type: 1 });
 qrSchema.index({ createdAt: -1 });
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DESTINATION_TYPES, QR_STATUSES, QR_ID_PATTERN } from "@/types";
+import { DESTINATION_TYPES, QR_PRINT_STATUSES, QR_STATUSES, QR_ID_PATTERN } from "@/types";
 import { MIN_QR_SIZE, MIN_TEXT_SIZE, TEXT_ALIGNMENTS } from "@/qr/overlay";
 
 export const MAX_BULK_COUNT = 1000;
@@ -31,6 +31,7 @@ export const merchantDetailsSchema = z.object({
 
 export const destinationTypeSchema = z.enum(DESTINATION_TYPES);
 export const qrStatusSchema = z.enum(QR_STATUSES);
+export const qrPrintStatusSchema = z.enum(QR_PRINT_STATUSES);
 
 export const activateQrSchema = merchantDetailsSchema.extend({
   qrId: qrIdSchema,
@@ -53,6 +54,11 @@ export const loginSchema = z.object({
 
 export const bulkGenerateSchema = z.object({
   count: z.coerce.number().int().min(1).max(MAX_BULK_COUNT),
+});
+
+export const updatePrintStatusSchema = z.object({
+  qrIds: z.array(qrIdSchema).min(1).max(MAX_BULK_COUNT),
+  printStatus: qrPrintStatusSchema,
 });
 
 /**

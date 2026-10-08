@@ -13,6 +13,8 @@ export type DestinationType = (typeof DESTINATION_TYPES)[number];
 
 export const QR_STATUSES = ["GENERATED", "ACTIVE", "INACTIVE"] as const;
 export type QrStatus = (typeof QR_STATUSES)[number];
+export const QR_PRINT_STATUSES = ["UNPRINTED", "GO_FOR_PRINT", "PRINTED"] as const;
+export type QrPrintStatus = (typeof QR_PRINT_STATUSES)[number];
 
 type DestinationConfig = {
   label: string;
