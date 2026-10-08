@@ -45,8 +45,8 @@ const BOLD: Record<string, number> = {
 
 const FALLBACK = 556;
 
-/** Font stack handed to the SVG renderer and mirrored by the editor preview. */
-export const ID_FONT_FAMILY = "Helvetica, Arial, 'Liberation Sans', 'Nimbus Sans', sans-serif";
+/** Generic family keeps Sharp/librsvg rendering portable across production images. */
+export const ID_FONT_FAMILY = "sans-serif";
 /** Bold, so the ID stays legible on a printed card. Matched by the tables above. */
 export const ID_FONT_WEIGHT = 700;
 /** Line box height as a multiple of the font size. */

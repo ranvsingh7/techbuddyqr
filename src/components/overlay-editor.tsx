@@ -266,7 +266,7 @@ export function OverlayEditor({ image, value, onChange, sampleId = REFERENCE_ID 
               <span
                 className="whitespace-nowrap font-bold text-black"
                 style={{
-                  fontFamily: "Helvetica, Arial, 'Liberation Sans', sans-serif",
+                  fontFamily: "sans-serif",
                   fontSize: scale ? Math.max(4, value.text.fontSize * scale) : 11,
                   lineHeight: 1.2,
                 }}
