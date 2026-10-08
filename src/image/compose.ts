@@ -1,17 +1,12 @@
 import sharp, { type OverlayOptions } from "sharp";
 import { renderQr } from "@/qr/render";
-import { normalizeOverlay, textAnchorOnCanvas, textBoxFor, type TemplateOverlay } from "@/qr/overlay";
-import { ID_FONT_FAMILY, ID_FONT_WEIGHT } from "@/qr/text-metrics";
+import { normalizeOverlay, textBoxFor, type TemplateOverlay } from "@/qr/overlay";
 import { MAX_IMAGE_SIDE } from "@/lib/limits";
 
 export type { QrLayer, TextAlignment, TextLayer, TemplateOverlay } from "@/qr/overlay";
 export { normalizeOverlay, overlayFromStored, placementFromQr } from "@/qr/overlay";
 
 const round = (value: number) => Math.round(value);
-
-function escapeXml(value: string): string {
-  return value.replace(/[<>&'"]/g, (character) => `&#${character.charCodeAt(0)};`);
-}
 
 function svgLayer(width: number, height: number, body: string): Buffer {
   return Buffer.from(
@@ -30,6 +25,50 @@ function qrPlateLayer(width: number, height: number, overlay: TemplateOverlay): 
   );
 }
 
+const ID_GLYPHS: Record<string, string[]> = {
+  A: ["01110", "10001", "10001", "11111", "10001", "10001", "10001"], B: ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
+  C: ["01111", "10000", "10000", "10000", "10000", "10000", "01111"], D: ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
+  E: ["11111", "10000", "10000", "11110", "10000", "10000", "11111"], F: ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
+  G: ["01111", "10000", "10000", "10111", "10001", "10001", "01111"], H: ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
+  J: ["00111", "00010", "00010", "00010", "10010", "10010", "01100"], K: ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
+  L: ["10000", "10000", "10000", "10000", "10000", "10000", "11111"], M: ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
+  N: ["10001", "11001", "10101", "10011", "10001", "10001", "10001"], P: ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
+  Q: ["01110", "10001", "10001", "10001", "10101", "10010", "01101"], R: ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
+  S: ["01111", "10000", "10000", "01110", "00001", "00001", "11110"], T: ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+  U: ["10001", "10001", "10001", "10001", "10001", "10001", "01110"], V: ["10001", "10001", "10001", "10001", "10001", "01010", "00100"],
+  W: ["10001", "10001", "10001", "10101", "10101", "11011", "10001"], X: ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
+  Y: ["10001", "10001", "01010", "00100", "00100", "00100", "00100"], Z: ["11111", "00001", "00010", "00100", "01000", "10000", "11111"],
+  "2": ["01110", "10001", "00001", "00010", "00100", "01000", "11111"], "3": ["11110", "00001", "00001", "01110", "00001", "00001", "11110"],
+  "4": ["00010", "00110", "01010", "10010", "11111", "00010", "00010"], "5": ["11111", "10000", "10000", "11110", "00001", "00001", "11110"],
+  "6": ["01110", "10000", "10000", "11110", "10001", "10001", "01110"], "7": ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
+  "8": ["01110", "10001", "10001", "01110", "10001", "10001", "01110"], "9": ["01110", "10001", "10001", "01111", "00001", "00001", "01110"],
+};
+
+function qrIdGlyphLayer(overlay: TemplateOverlay, qrId: string): string {
+  const { text } = overlay;
+  const box = textBoxFor(text, qrId);
+  const pixel = Math.min(text.fontSize / 8, box.width / Math.max(1, 6 * qrId.length - 1));
+  const advance = pixel * 6;
+  const glyphWidth = advance * qrId.length - pixel;
+  const glyphHeight = pixel * 7;
+  const left = Math.round(text.alignment === "left" ? text.x : text.alignment === "right" ? text.x + box.width - glyphWidth : text.x + (box.width - glyphWidth) / 2);
+  const top = Math.round(text.y + (box.height - glyphHeight) / 2);
+  const cells: string[] = [];
+
+  [...qrId].forEach((character, characterIndex) => {
+    const glyph = ID_GLYPHS[character] ?? ID_GLYPHS["?"];
+    if (!glyph) return;
+    glyph.forEach((row, rowIndex) => {
+      [...row].forEach((on, columnIndex) => {
+        if (on === "1") cells.push(`<rect x="${left + characterIndex * advance + columnIndex * pixel}" y="${top + rowIndex * pixel}" width="${pixel}" height="${pixel}"/>`);
+      });
+    });
+  });
+
+  const rotation = text.rotation === 0 ? "" : ` transform="rotate(${round(text.rotation)} ${round(text.x + box.width / 2)} ${round(text.y + box.height / 2)})"`;
+  return `<g fill="#000000" shape-rendering="crispEdges"${rotation}>${cells.join("")}</g>`;
+}
+
 /**
  * Layer 2: the printed QR ID as its own SVG, positioned by the text layer alone.
  *
@@ -44,17 +83,10 @@ function textLayer(width: number, height: number, overlay: TemplateOverlay, qrId
   const { text } = overlay;
   const box = textBoxFor(text, qrId);
 
-  const anchor = textAnchorOnCanvas(text, qrId, width);
-  const centreY = text.y + box.height / 2;
-  const centreX = text.x + box.width / 2;
-
-  const anchorMode = text.alignment === "left" ? "start" : text.alignment === "right" ? "end" : "middle";
-  const rotation = text.rotation === 0 ? "" : ` transform="rotate(${text.rotation} ${round(centreX)} ${round(centreY)})"`;
-
   return svgLayer(
     width,
     height,
-    `<text x="${round(anchor)}" y="${round(centreY)}"${rotation} text-anchor="${anchorMode}" dominant-baseline="central" font-family="${ID_FONT_FAMILY}" font-size="${text.fontSize}" font-weight="${ID_FONT_WEIGHT}" fill="#000000" xml:space="preserve">${escapeXml(qrId)}</text>`,
+    qrIdGlyphLayer(overlay, qrId),
   );
 }
 
