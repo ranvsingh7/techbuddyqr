@@ -1,4 +1,6 @@
 import sharp, { type OverlayOptions } from "sharp";
+import * as fontkit from "fontkit";
+import path from "node:path";
 import { renderQr } from "@/qr/render";
 import { normalizeOverlay, textBoxFor, type TemplateOverlay } from "@/qr/overlay";
 import { MAX_IMAGE_SIDE } from "@/lib/limits";
@@ -47,26 +49,32 @@ const ID_GLYPHS: Record<string, string[]> = {
 function qrIdGlyphLayer(overlay: TemplateOverlay, qrId: string): string {
   const { text } = overlay;
   const box = textBoxFor(text, qrId);
-  const pixel = Math.min(text.fontSize / 8, box.width / Math.max(1, 6 * qrId.length - 1));
-  const advance = pixel * 6;
-  const glyphWidth = advance * qrId.length - pixel;
-  const glyphHeight = pixel * 7;
-  const left = Math.round(text.alignment === "left" ? text.x : text.alignment === "right" ? text.x + box.width - glyphWidth : text.x + (box.width - glyphWidth) / 2);
-  const top = Math.round(text.y + (box.height - glyphHeight) / 2);
-  const cells: string[] = [];
+  const fontPath = path.join(process.cwd(), "node_modules/@fontsource/roboto/files/roboto-latin-700-normal.woff2");
+  const font = fontkit.openSync(fontPath) as import("fontkit").Font;
+  const layout = font.layout(qrId);
+  const scale = Math.min(text.fontSize / font.unitsPerEm, box.width / layout.advanceWidth);
+  const runHeight = (font.ascent - font.descent) * scale;
+  let cursor = 0;
+  const positionedGlyphs = layout.glyphs.map((glyph, index) => {
+    const position = layout.positions[index];
+    const x = cursor + (position?.xOffset ?? 0);
+    cursor += position?.xAdvance ?? glyph.advanceWidth;
+    return { glyph, position, x };
+  });
+  const visualMin = Math.min(...positionedGlyphs.map(({ glyph, x }) => x + glyph.bbox.minX));
+  const visualMax = Math.max(...positionedGlyphs.map(({ glyph, x }) => x + glyph.bbox.maxX));
+  const visualWidth = (visualMax - visualMin) * scale;
+  const visualLeft = text.alignment === "left" ? text.x : text.alignment === "right" ? text.x + box.width - visualWidth : text.x + (box.width - visualWidth) / 2;
+  const left = Math.round(visualLeft - visualMin * scale);
+  const baseline = Math.round(text.y + (box.height - runHeight) / 2 + font.ascent * scale);
+  const paths: string[] = [];
 
-  [...qrId].forEach((character, characterIndex) => {
-    const glyph = ID_GLYPHS[character] ?? ID_GLYPHS["?"];
-    if (!glyph) return;
-    glyph.forEach((row, rowIndex) => {
-      [...row].forEach((on, columnIndex) => {
-        if (on === "1") cells.push(`<rect x="${left + characterIndex * advance + columnIndex * pixel}" y="${top + rowIndex * pixel}" width="${pixel}" height="${pixel}"/>`);
-      });
-    });
+  positionedGlyphs.forEach(({ glyph, position, x }) => {
+    paths.push(`<path d="${glyph.path.toSVG()}" transform="translate(${left + x * scale} ${baseline + (position?.yOffset ?? 0) * scale}) scale(${scale} ${-scale})"/>`);
   });
 
   const rotation = text.rotation === 0 ? "" : ` transform="rotate(${round(text.rotation)} ${round(text.x + box.width / 2)} ${round(text.y + box.height / 2)})"`;
-  return `<g fill="#000000" shape-rendering="crispEdges"${rotation}>${cells.join("")}</g>`;
+  return `<g fill="#000000"${rotation}>${paths.join("")}</g>`;
 }
 
 /**
