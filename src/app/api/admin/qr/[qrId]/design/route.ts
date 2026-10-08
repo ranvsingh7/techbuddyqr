@@ -19,7 +19,7 @@ const handler = withErrorHandling(
     return new Response(new Uint8Array(design), {
       headers: {
         "content-type": "image/png",
-        "cache-control": "private, max-age=60",
+        "cache-control": "no-store",
       },
     });
   },

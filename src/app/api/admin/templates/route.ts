@@ -34,7 +34,11 @@ const createHandler = withErrorHandling(async (request: Request): Promise<Respon
     // Two independent layers. Older clients can still post x/y/width/height.
     overlay: hasOverlay
       ? {
-          qr: { x: form.get("qr.x"), y: form.get("qr.y"), size: form.get("qr.size") },
+          qr: {
+            x: form.get("qr.x"), y: form.get("qr.y"), size: form.get("qr.size"),
+            dotStyle: form.get("qr.dotStyle") ?? undefined,
+            icon: form.get("qr.icon") ? JSON.parse(String(form.get("qr.icon"))) : undefined,
+          },
           text: {
             x: form.get("text.x"),
             y: form.get("text.y"),

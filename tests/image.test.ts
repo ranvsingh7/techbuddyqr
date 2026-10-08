@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { renderDesign } from "@/image/compose";
-import { printedQrSize, renderQrPng } from "@/qr/render";
+import { printedQrSize, renderQr, renderQrPng } from "@/qr/render";
 import { REFERENCE_ID, clampQr, rotatedExtent, textBoxFor, type TemplateOverlay } from "@/qr/overlay";
 import { decodeQrText } from "./helpers/decode-qr";
 
@@ -303,16 +303,16 @@ describe("printedQrSize", () => {
   });
 
   it("is the largest whole-module symbol that fits", () => {
-    // 37 modules across for this payload, so whole scales land on multiples of 37.
-    expect(printedQrSize(QR_ID, 500)).toBe(481);
-    expect(printedQrSize(QR_ID, 481)).toBe(481);
-    expect(printedQrSize(QR_ID, 480)).toBe(444);
-    expect(printedQrSize(QR_ID, 90)).toBe(74);
+    // 29 modules across for this payload, with no outer quiet-zone padding.
+    expect(printedQrSize(QR_ID, 500)).toBe(493);
+    expect(printedQrSize(QR_ID, 481)).toBe(464);
+    expect(printedQrSize(QR_ID, 480)).toBe(464);
+    expect(printedQrSize(QR_ID, 90)).toBe(87);
   });
 });
 
 describe("renderQrPng", () => {
-  it("renders a square symbol with the required quiet zone", async () => {
+  it("renders a square symbol without extra outer padding", async () => {
     const png = await renderQrPng(QR_ID);
     const metadata = await sharp(png).metadata();
 
@@ -328,10 +328,18 @@ describe("renderQrPng", () => {
       corner(info.width - 1, info.height - 1),
     ];
 
-    for (const value of corners) expect(value).toBeGreaterThan(240);
+    expect(corners.some((value) => value < 20)).toBe(true);
   });
 
   it("encodes only the app URL, never the shop destination", async () => {
     expect(await decodeQrText(await renderQrPng(QR_ID))).toBe(EXPECTED_PAYLOAD);
+  });
+
+  it("keeps rounded dots and center icons scannable", async () => {
+    const round = await renderQr(QR_ID, 512, { dotStyle: "round", icon: "instagram" });
+    const squareWithIcon = await renderQr(QR_ID, 512, { icon: "whatsapp" });
+
+    expect(await decodeQrText(round.buffer)).toBe(EXPECTED_PAYLOAD);
+    expect(await decodeQrText(squareWithIcon.buffer)).toBe(EXPECTED_PAYLOAD);
   });
 });

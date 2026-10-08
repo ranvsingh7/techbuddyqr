@@ -30,6 +30,8 @@ const templateSchema = new Schema(
         x: { type: Number, default: null },
         y: { type: Number, default: null },
         size: { type: Number, default: null },
+        dotStyle: { type: String, enum: ["square", "round"], default: undefined },
+        icon: { type: Schema.Types.Mixed, default: undefined },
       },
       /** Layer 2: the printed QR ID, placed anywhere on its own. */
       text: {

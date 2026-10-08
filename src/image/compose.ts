@@ -80,7 +80,7 @@ export async function renderDesign(params: {
 
   const { width, height } = metadata;
   const overlay = normalizeOverlay(params.overlay, { width, height }, params.qrId);
-  const qr = await renderQr(params.qrId, overlay.qr.size);
+  const qr = await renderQr(params.qrId, overlay.qr.size, { dotStyle: overlay.qr.dotStyle, icon: overlay.qr.icon });
 
   const layers: OverlayOptions[] = [];
 

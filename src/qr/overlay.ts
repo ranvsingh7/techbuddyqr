@@ -21,7 +21,9 @@
 import { measureTextWidth, textBoxHeight, TEXT_LINE_HEIGHT } from "@/qr/text-metrics";
 
 export type TextAlignment = "left" | "center" | "right";
-export type QrLayer = { x: number; y: number; size: number };
+export type QrDotStyle = "square" | "round";
+export type QrIcon = "none" | "instagram" | "google" | "whatsapp" | "link" | { type: "custom"; dataUrl: string };
+export type QrLayer = { x: number; y: number; size: number; dotStyle?: QrDotStyle; icon?: QrIcon };
 export type TextLayer = { x: number; y: number; fontSize: number; rotation: number; alignment: TextAlignment };
 export type TemplateOverlay = { qr: QrLayer; text: TextLayer };
 
@@ -42,6 +44,7 @@ export const MIN_TEXT_SIZE = 8;
  * renderer still measures the real ID when it draws.
  */
 export const REFERENCE_ID = "QR7K29XA";
+export const DEFAULT_QR_STYLE: Pick<QrLayer, "dotStyle" | "icon"> = { dotStyle: "square", icon: "none" };
 
 const clamp = (value: number, min: number, max: number) => {
   // A value that is not a number cannot be placed, so it falls back to the lower bound.
@@ -109,11 +112,15 @@ export function maxFontSize(image: ImageBox, value: string, rotation = 0): numbe
 export function clampQr(qr: QrLayer, image: ImageBox): QrLayer {
   const size = round(clamp(qr.size, Math.min(MIN_QR_SIZE, image.width, image.height), Math.min(image.width, image.height)));
 
-  return {
+  const result: QrLayer = {
     x: round(clamp(qr.x, 0, Math.max(0, image.width - size))),
     y: round(clamp(qr.y, 0, Math.max(0, image.height - size))),
     size,
   };
+
+  if (qr.dotStyle !== undefined && qr.dotStyle !== null) result.dotStyle = qr.dotStyle === "round" ? "round" : "square";
+  if (qr.icon !== undefined && qr.icon !== null) result.icon = qr.icon;
+  return result;
 }
 
 /**
@@ -281,7 +288,7 @@ export function textAnchorX(text: TextLayer, value: string): number {
  */
 export function defaultOverlay(image: ImageBox): TemplateOverlay {
   const size = round(clamp(Math.min(image.width, image.height) * 0.34, MIN_QR_SIZE, Math.min(image.width, image.height)));
-  const qr = clampQr({ x: Math.round((image.width - size) / 2), y: Math.round(image.height * 0.52), size }, image);
+  const qr = clampQr({ x: Math.round((image.width - size) / 2), y: Math.round(image.height * 0.52), size, ...DEFAULT_QR_STYLE }, image);
 
   return normalizeOverlay({ qr, text: defaultTextFor(qr, image, REFERENCE_ID) }, image, REFERENCE_ID);
 }

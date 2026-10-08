@@ -20,6 +20,7 @@ import {
   type Point,
   type TemplateOverlay,
   type TextAlignment,
+  type QrIcon,
 } from "@/qr/overlay";
 import { inputClass, labelClass } from "@/components/ui";
 
@@ -226,7 +227,7 @@ export function OverlayEditor({ image, value, onChange, sampleId = REFERENCE_ID 
             }}
           >
             <div className="absolute inset-0 flex items-center justify-center bg-white">
-              <SampleQr className="h-full w-full text-black" />
+              <SampleQr className="h-full w-full text-black" round={value.qr.dotStyle === "round"} icon={value.qr.icon} />
             </div>
 
             {selected === "qr"
@@ -413,18 +414,49 @@ function QrFields({
   qr: TemplateOverlay["qr"];
   onCommit: (qr: TemplateOverlay["qr"]) => void;
 }) {
+  async function chooseIcon(file: File | undefined) {
+    if (!file) return;
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+    onCommit({ ...qr, icon: { type: "custom", dataUrl } });
+  }
+
   return (
-    <div className="grid grid-cols-3 gap-3">
-      <NumberField id="qr-x" label="X" value={qr.x} min={0} max={Math.max(0, image.width - qr.size)} onCommit={(x) => onCommit({ ...qr, x })} />
-      <NumberField id="qr-y" label="Y" value={qr.y} min={0} max={Math.max(0, image.height - qr.size)} onCommit={(y) => onCommit({ ...qr, y })} />
-      <NumberField
-        id="qr-size"
-        label="Size"
-        value={qr.size}
-        min={Math.min(MIN_QR_SIZE, image.width, image.height)}
-        max={Math.min(image.width, image.height)}
-        onCommit={(size) => onCommit({ ...qr, size })}
-      />
+    <div className="space-y-3">
+      <div className="grid grid-cols-3 gap-3">
+        <NumberField id="qr-x" label="X" value={qr.x} min={0} max={Math.max(0, image.width - qr.size)} onCommit={(x) => onCommit({ ...qr, x })} />
+        <NumberField id="qr-y" label="Y" value={qr.y} min={0} max={Math.max(0, image.height - qr.size)} onCommit={(y) => onCommit({ ...qr, y })} />
+        <NumberField id="qr-size" label="Size" value={qr.size} min={Math.min(MIN_QR_SIZE, image.width, image.height)} max={Math.min(image.width, image.height)} onCommit={(size) => onCommit({ ...qr, size })} />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label htmlFor="qr-dot-style" className={labelClass}>Dot style</label>
+          <select id="qr-dot-style" value={qr.dotStyle ?? "square"} onChange={(event) => onCommit({ ...qr, dotStyle: event.target.value as "square" | "round" })} className={inputClass}>
+            <option value="square">Square</option>
+            <option value="round">Rounded dots</option>
+          </select>
+        </div>
+        <div>
+          <label htmlFor="qr-icon" className={labelClass}>Center icon</label>
+          <select id="qr-icon" value={typeof qr.icon === "string" ? qr.icon : qr.icon?.type === "custom" ? "custom" : "none"} onChange={(event) => onCommit({ ...qr, icon: event.target.value as QrIcon })} className={inputClass}>
+            <option value="none">No icon</option>
+            <option value="instagram">Instagram</option>
+            <option value="google">Google</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="link">Link</option>
+            <option value="custom">Custom image…</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label htmlFor="qr-custom-icon" className={labelClass}>Custom center image</label>
+        <input id="qr-custom-icon" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void chooseIcon(event.target.files?.[0])} className="block w-full text-sm text-muted file:mr-3 file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-2 file:text-sm file:font-medium file:text-ink" />
+        <p className="mt-1 text-xs text-muted">A white badge protects the code. Keep the icon simple for reliable scanning.</p>
+      </div>
     </div>
   );
 }
@@ -521,17 +553,22 @@ function NumberField({
 }
 
 /** Deterministic QR-looking placeholder. Preview only: the real code is added later. */
-function SampleQr({ className }: { className?: string }) {
+function SampleQr({ className, round, icon }: { className?: string; round?: boolean; icon?: QrIcon }) {
   const modules = useMemo(() => buildSampleModules(25), []);
   const grid = modules.map((row, y) =>
     row.some(Boolean)
-      ? row.map((on, x) => (on ? <rect key={x} x={x} y={y} width={1} height={1} fill="currentColor" /> : null))
+      ? row.map((on, x) => {
+          const rounded = Boolean(round && x > 7 && y > 7);
+          return on ? <rect key={x} x={x + (rounded ? 0.08 : 0)} y={y + (rounded ? 0.08 : 0)} width={rounded ? 0.84 : 1} height={rounded ? 0.84 : 1} rx={rounded ? 0.42 : 0} fill="currentColor" /> : null;
+        })
       : null,
   );
 
   return (
     <svg viewBox="-1 -1 27 27" className={className} aria-hidden="true" shapeRendering="crispEdges">
       {grid}
+      {icon && icon !== "none" ? <rect x="9.8" y="9.8" width="5.4" height="5.4" rx="0.9" fill="white" /> : null}
+      {typeof icon === "object" && icon.type === "custom" ? <image href={icon.dataUrl} x="10.8" y="10.8" width="3.4" height="3.4" preserveAspectRatio="xMidYMid meet" /> : icon && icon !== "none" ? <text x="12.5" y="13.6" textAnchor="middle" fontSize="3.2" fontWeight="700" fill="currentColor">{icon === "instagram" ? "◎" : icon === "google" ? "G" : icon === "whatsapp" ? "◔" : "↗"}</text> : null}
     </svg>
   );
 }

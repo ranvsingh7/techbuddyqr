@@ -51,6 +51,8 @@ export function TemplateCreateForm() {
     body.set("qr.x", String(overlay.qr.x));
     body.set("qr.y", String(overlay.qr.y));
     body.set("qr.size", String(overlay.qr.size));
+    body.set("qr.dotStyle", overlay.qr.dotStyle ?? "square");
+    body.set("qr.icon", JSON.stringify(overlay.qr.icon ?? "none"));
     body.set("text.x", String(overlay.text.x));
     body.set("text.y", String(overlay.text.y));
     body.set("text.fontSize", String(overlay.text.fontSize));

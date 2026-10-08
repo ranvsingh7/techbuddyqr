@@ -120,6 +120,11 @@ export const qrLayerSchema = z.object({
   x: z.coerce.number().int().min(0),
   y: z.coerce.number().int().min(0),
   size: z.coerce.number().int().min(MIN_QR_SIZE),
+  dotStyle: z.enum(["square", "round"]).optional(),
+  icon: z.union([
+    z.enum(["none", "instagram", "google", "whatsapp", "link"]),
+    z.object({ type: z.literal("custom"), dataUrl: z.string().max(500_000) }),
+  ]).optional(),
 });
 
 /** Layer 2. Placed anywhere on the artwork, independent of the QR. */

@@ -22,6 +22,7 @@ export function DesignBatch({ templateId, candidates }: { templateId: string; ca
   const [count, setCount] = useState(Math.min(20, candidates.length));
   const [status, setStatus] = useState<QrStatus | "">("GENERATED");
   const [selected, setSelected] = useState<string[]>([]);
+  const [previewVersion, setPreviewVersion] = useState(0);
   const [error, setError] = useState("");
   const [zipPending, setZipPending] = useState(false);
 
@@ -29,6 +30,7 @@ export function DesignBatch({ templateId, candidates }: { templateId: string; ca
 
   function generatePreview() {
     setError("");
+    setPreviewVersion((version) => version + 1);
     setSelected(pool.slice(0, Math.min(count, MAX_ZIP_COUNT)).map((candidate) => candidate.qrId));
   }
 
@@ -129,7 +131,7 @@ export function DesignBatch({ templateId, candidates }: { templateId: string; ca
               return (
                 <figure key={qrId} className="space-y-2">
                   <img
-                    src={`/api/admin/qr/${qrId}/design?templateId=${templateId}`}
+                    src={`/api/admin/qr/${qrId}/design?templateId=${templateId}&preview=${previewVersion}`}
                     alt={`Design for ${qrId}`}
                     width={220}
                     height={280}
@@ -143,7 +145,7 @@ export function DesignBatch({ templateId, candidates }: { templateId: string; ca
                       </span>
                     </span>
                     <a
-                      href={`/api/admin/qr/${qrId}/design?templateId=${templateId}`}
+                      href={`/api/admin/qr/${qrId}/design?templateId=${templateId}&preview=${previewVersion}`}
                       download={`${qrId}.png`}
                       className={buttonClass.link}
                     >
